@@ -1,0 +1,222 @@
+import { generateWelcomeImage } from './CanvasWelcome.js';
+import { styleText } from './utils.js';
+import type DatabaseService from './DatabaseService.js';
+
+// ============================================================
+// TYPE DEFINITIONS
+// ============================================================
+
+interface BotLike {
+    sendMessage(chatId: string, content: unknown, options?: unknown): Promise<unknown>;
+    groupMetadata(jid: string): Promise<GroupMetadata>;
+    profilePictureUrl(jid: string): Promise<string>;
+}
+
+interface GroupMetadata {
+    subject: string;
+    participants: unknown[];
+}
+
+interface GroupSettings {
+    welcome: boolean;
+    goodbye: boolean;
+    antilink?: boolean;
+    economy?: boolean;
+    nsfw?: boolean;
+}
+
+interface GroupData {
+    id: string;
+    settings: GroupSettings;
+}
+
+interface ParticipantUpdate {
+    id: string;
+    participants: (string | ParticipantObject)[];
+    action: 'add' | 'remove' | 'promote' | 'demote';
+}
+
+interface ParticipantObject {
+    phoneNumber?: string;
+    id?: string;
+}
+
+// ============================================================
+// WELCOME HANDLER CLASS
+// ============================================================
+
+export class WelcomeHandler {
+    private dbService: DatabaseService;
+
+    constructor(dbService: DatabaseService) {
+        this.dbService = dbService;
+    }
+
+    async handle(bot: BotLike, event: ParticipantUpdate): Promise<void> {
+        console.log('[WelcomeHandler] Received event:', JSON.stringify(event, null, 2));
+        const { id, participants, action } = event;
+
+        if (action !== 'add' && action !== 'remove') {
+            console.log('[WelcomeHandler] Ignoring action:', action);
+            return;
+        }
+
+        try {
+            const groupData = this.dbService.getGroup(id) as GroupData;
+            console.log('[WelcomeHandler] GroupData:', groupData ? 'Found' : 'Not Found');
+            console.log('[WelcomeHandler] Settings:', groupData?.settings);
+
+            if (!groupData || !groupData.settings) {
+                console.log('[WelcomeHandler] Group data or settings missing');
+                return;
+            }
+
+            const metadata = await bot.groupMetadata(id);
+            console.log('[WelcomeHandler] Metadata fetched for:', metadata.subject);
+
+            for (const participant of participants) {
+                const userJid = this.extractJid(participant);
+                if (!userJid) {
+                    console.log('[WelcomeHandler] Could not extract JID from participant:', participant);
+                    continue;
+                }
+
+                let shouldSendWelcome = false;
+                let shouldSendGoodbye = false;
+
+                if (action === 'add' && groupData.settings.welcome) {
+                    shouldSendWelcome = true;
+                } else if (action === 'remove' && groupData.settings.goodbye) {
+                    shouldSendGoodbye = true;
+                }
+
+                if (!shouldSendWelcome && !shouldSendGoodbye) {
+                    continue;
+                }
+
+                const ppUrl = await this.getProfilePicture(bot, userJid);
+
+                try {
+                    if (shouldSendWelcome) {
+                        await this.sendWelcome(bot, id, userJid, metadata.subject, ppUrl);
+                    } else if (shouldSendGoodbye) {
+                        await this.sendGoodbye(bot, id, userJid, metadata.subject, ppUrl);
+                    }
+                } catch (e) {
+                    console.error('[WelcomeHandler] Error sending message for', userJid, e);
+                }
+            }
+        } catch (error) {
+            console.error('[WelcomeHandler] Error:', error);
+        }
+    }
+
+    private extractJid(participant: string | ParticipantObject): string | null {
+        if (typeof participant === 'string') {
+            return participant;
+        }
+        if (typeof participant === 'object' && participant !== null) {
+            if (participant.phoneNumber) {
+                return participant.phoneNumber;
+            }
+            if (participant.id) {
+                return participant.id;
+            }
+        }
+        return null;
+    }
+
+    private async getProfilePicture(bot: BotLike, jid: string): Promise<string> {
+        console.log('[WelcomeHandler] Getting PFP for:', jid);
+        const fallback = 'https://i.pinimg.com/736x/70/dd/61/70dd612c65034b88ebf474a52ef70b46.jpg';
+
+        try {
+            const timeout = new Promise<null>((_, reject) => {
+                setTimeout(() => reject(new Error('Timeout getting profile picture')), 5000);
+            });
+
+            const ppUrl = await Promise.race([
+                bot.profilePictureUrl(jid).catch((err: { output?: { payload?: { statusCode?: number } }; data?: number; message?: string }) => {
+                    if (err?.output?.payload?.statusCode === 404 || err?.data === 404) {
+                        console.log('[WelcomeHandler] User has no profile picture or is unavailable, using fallback');
+                        return null;
+                    }
+                    console.log('[WelcomeHandler] PFP error:', err.message);
+                    return null;
+                }),
+                timeout
+            ]);
+
+            console.log('[WelcomeHandler] PFP Result:', ppUrl ? 'URL Found' : 'No URL');
+            return ppUrl || fallback;
+        } catch (error) {
+            const err = error as { output?: { payload?: { statusCode?: number } }; data?: number; message?: string };
+            if (err?.output?.payload?.statusCode !== 404 && err?.data !== 404) {
+                console.log('[WelcomeHandler] Error getting PFP (using fallback):', err.message);
+            }
+            return fallback;
+        }
+    }
+
+    private async sendWelcome(bot: BotLike, chatId: string, userJid: string, groupName: string, ppUrl: string): Promise<void> {
+        const buffer = await generateWelcomeImage('welcome', userJid, ppUrl);
+        const userName = userJid.split('@')[0];
+
+        const fkontak = {
+            key: { participants: '0@s.whatsapp.net', remoteJid: 'status@broadcast', fromMe: false, id: 'Halo' },
+            message: {
+                contactMessage: {
+                    vcard: `BEGIN:VCARD\nVERSION:3.0\nN:Sy;Bot;;;\nFN:${userName}\nitem1.TEL;waid=${userName}:${userName}\nitem1.X-ABLabel:Ponsel\nEND:VCARD`
+                }
+            },
+            participant: '0@s.whatsapp.net'
+        };
+
+        const text = styleText(`
+༘⋆✿ *Bienvenido/a* a ${groupName}!
+    » @${userName}
+
+૮ ․ ․ ྀིა Espero que la pases bien en este grupo, y no olvides leer las reglas porfis.
+
+
+> 𖣂 Usa */help* para ver la lista de comandos disponibles.
+`.trim());
+
+        await bot.sendMessage(chatId, {
+            image: buffer,
+            caption: text,
+            mentions: [userJid]
+        }, { quoted: fkontak });
+    }
+
+    private async sendGoodbye(bot: BotLike, chatId: string, userJid: string, groupName: string, ppUrl: string): Promise<void> {
+        const buffer = await generateWelcomeImage('goodbye', userJid, ppUrl);
+        const userName = userJid.split('@')[0];
+
+        const fkontak = {
+            key: { participants: '0@s.whatsapp.net', remoteJid: 'status@broadcast', fromMe: false, id: 'Halo' },
+            message: {
+                contactMessage: {
+                    vcard: `BEGIN:VCARD\nVERSION:3.0\nN:Sy;Bot;;;\nFN:${userName}\nitem1.TEL;waid=${userName}:${userName}\nitem1.X-ABLabel:Ponsel\nEND:VCARD`
+                }
+            },
+            participant: '0@s.whatsapp.net'
+        };
+
+        const text = styleText(`
+༘⋆✿ *Adiós* de ${groupName}!
+    » @${userName}
+
+૮ ․ ․ ྀིა Esperamos que vuelvas pronto por aquí.
+
+
+> 𖣂 Kaoruko Waguri Bot
+`.trim());
+
+        await bot.sendMessage(chatId, {
+            image: buffer,
+            caption: text,
+            mentions: [userJid]
+        }, { quoted: fkontak });
+    }
+}

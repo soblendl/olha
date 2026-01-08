@@ -1,0 +1,52 @@
+[
+  {
+    "id": "120363425971920781@g.us",
+    "settings": {
+      "welcome": false,
+      "antilink": false,
+      "economy": true,
+      "nsfw": false
+    },
+    "alerts": [],
+    "stats": {
+      "messages": 0
+    },
+    "__uuid": "fe7756af-e3b1-46ba-b4e3-ad627ac43413",
+    "updatedAt": "2025-11-25T02:37:17.837Z",
+    "createdAt": "2025-11-25T02:37:17.837Z"
+  },
+  {
+    "id": "120363425001997800@g.us",
+    "settings": {
+      "welcome": false,
+      "goodbye": false,
+      "antilink": false,
+      "economy": true,
+      "nsfw": false
+    },
+    "alerts": [],
+    "stats": {
+      "messages": 0
+    },
+    "__uuid": "f884b0ff-f842-45cf-886a-7544be613a7c",
+    "updatedAt": "2026-01-07T13:40:32.284Z",
+    "createdAt": "2026-01-07T13:40:32.284Z"
+  },
+  {
+    "id": "120363422958427492@g.us",
+    "settings": {
+      "welcome": false,
+      "goodbye": false,
+      "antilink": false,
+      "economy": true,
+      "nsfw": false
+    },
+    "alerts": [],
+    "stats": {
+      "messages": 0
+    },
+    "__uuid": "e386d6bd-5fb6-4ad3-a1d3-fe3db8e70582",
+    "updatedAt": "2026-01-07T13:41:48.454Z",
+    "createdAt": "2026-01-07T13:41:48.454Z"
+  }
+]
